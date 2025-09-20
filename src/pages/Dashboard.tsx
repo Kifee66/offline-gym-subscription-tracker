@@ -3,16 +3,19 @@ import { motion } from 'framer-motion';
 import { 
   Users, 
   UserCheck, 
-  UserX, 
-  Clock, 
+  AlertTriangle, 
+  TrendingUp, 
   DollarSign, 
-  TrendingUp,
   Calendar,
   Plus,
-  Dumbbell
+  Dumbbell,
+  Activity,
+  CreditCard
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import StatsCard from '@/components/dashboard/StatsCard';
 import { db, Member, initializeDefaultSettings } from '@/lib/database';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
@@ -21,20 +24,29 @@ import { Link } from 'react-router-dom';
 interface DashboardStats {
   totalMembers: number;
   activeMembers: number;
-  expiredMembers: number;
-  expiringSoon: number;
-  monthlyRevenue: number;
-  upcomingRenewals: Member[];
+  todayCheckIns: number;
+  todayRevenue: {
+    daily: number;
+    weekly: number;
+    monthly: number;
+    incomplete: number;
+  };
+  incompletePayments: number;
+  overdueMembers: Member[];
+  weeklyCheckIns: Array<{ day: string; checkIns: number }>;
+  subscriptionTypeBreakdown: Array<{ name: string; value: number }>;
 }
 
 export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats>({
     totalMembers: 0,
     activeMembers: 0,
-    expiredMembers: 0,
-    expiringSoon: 0,
-    monthlyRevenue: 0,
-    upcomingRenewals: []
+    todayCheckIns: 0,
+    todayRevenue: { daily: 0, weekly: 0, monthly: 0, incomplete: 0 },
+    incompletePayments: 0,
+    overdueMembers: [],
+    weeklyCheckIns: [],
+    subscriptionTypeBreakdown: []
   });
   const [loading, setLoading] = useState(true);
 
@@ -47,26 +59,38 @@ export default function Dashboard() {
         // Update member statuses first
         await db.updateMemberStatuses();
         
-        // Get all members
+        // Get all members and stats
         const allMembers = await db.getAllMembers();
         const activeMembers = await db.getActiveMembers();
-        const expiredMembers = await db.getExpiredMembers();
-        const expiringSoonMembers = await db.getExpiringSoonMembers();
+        const overdueMembers = await db.getOverdueMembers();
+        const incompleteMembers = await db.getMembersWithIncompletePayments();
         
-        // Get current month revenue
-        const now = new Date();
-        const monthlyRevenue = await db.getMonthlyRevenue(now.getFullYear(), now.getMonth() + 1);
+        // Get today's data
+        const todayCheckIns = await db.getTodayCheckIns();
+        const todayRevenue = await db.getTodayRevenue();
+        const weeklyCheckIns = await db.getWeeklyCheckInStats();
         
-        // Get upcoming renewals (next 7 days)
-        const upcomingRenewals = expiringSoonMembers.slice(0, 5);
+        // Subscription type breakdown
+        const subscriptionStats = allMembers.reduce((acc, member) => {
+          acc[member.subscriptionType] = (acc[member.subscriptionType] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+        
+        const subscriptionTypeBreakdown = [
+          { name: 'Daily', value: subscriptionStats.daily || 0 },
+          { name: 'Weekly', value: subscriptionStats.weekly || 0 },
+          { name: 'Monthly', value: subscriptionStats.monthly || 0 }
+        ];
         
         setStats({
           totalMembers: allMembers.length,
           activeMembers: activeMembers.length,
-          expiredMembers: expiredMembers.length,
-          expiringSoon: expiringSoonMembers.length,
-          monthlyRevenue,
-          upcomingRenewals
+          todayCheckIns,
+          todayRevenue,
+          incompletePayments: incompleteMembers.length,
+          overdueMembers: overdueMembers.slice(0, 5),
+          weeklyCheckIns,
+          subscriptionTypeBreakdown
         });
       } catch (error) {
         console.error('Error loading dashboard data:', error);
@@ -127,112 +151,178 @@ export default function Dashboard() {
         className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"
       >
         <StatsCard
-          title="Total Members"
-          value={stats.totalMembers}
-          icon={Users}
-          variant="primary"
-        />
-        <StatsCard
           title="Active Members"
           value={stats.activeMembers}
           icon={UserCheck}
           variant="success"
         />
         <StatsCard
-          title="Expired Members"
-          value={stats.expiredMembers}
-          icon={UserX}
-          variant="destructive"
+          title="Today's Check-ins"
+          value={stats.todayCheckIns}
+          icon={Activity}
+          variant="primary"
         />
         <StatsCard
-          title="Expiring Soon"
-          value={stats.expiringSoon}
-          icon={Clock}
+          title="Today's Revenue"
+          value={`KSh ${(stats.todayRevenue.daily + stats.todayRevenue.weekly + stats.todayRevenue.monthly).toLocaleString()}`}
+          icon={DollarSign}
+          variant="primary"
+        />
+        <StatsCard
+          title="Incomplete Payments"
+          value={stats.incompletePayments}
+          icon={CreditCard}
           variant="warning"
         />
       </motion.div>
 
-      {/* Revenue and Renewals */}
+      {/* Charts and Visualizations */}
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Monthly Revenue */}
+        {/* Weekly Check-ins Chart */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <Card className="card-stats revenue-card-gradient border-0">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-white/90">
-                Monthly Revenue
-              </CardTitle>
-              <div className="p-2 rounded-lg bg-white/20 backdrop-blur-sm">
-                <DollarSign className="h-4 w-4 text-white" />
-              </div>
+          <Card className="card-stats">
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">Weekly Check-ins</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-white">
-                KSh {stats.monthlyRevenue.toLocaleString()}
-              </div>
-              <div className="flex items-center pt-2">
-                <TrendingUp className="w-4 h-4 text-white/80 mr-1" />
-                <span className="text-xs font-medium text-white/80">
-                  {format(new Date(), 'MMMM yyyy')}
-                </span>
-              </div>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={stats.weeklyCheckIns}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="day" stroke="hsl(var(--muted-foreground))" />
+                  <YAxis stroke="hsl(var(--muted-foreground))" />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                    }}
+                  />
+                  <Bar dataKey="checkIns" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </CardContent>
           </Card>
         </motion.div>
 
-        {/* Upcoming Renewals */}
+        {/* Subscription Type Pie Chart */}
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.3 }}
         >
           <Card className="card-stats">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Upcoming Renewals
-              </CardTitle>
-              <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                <Calendar className="h-4 w-4" />
-              </div>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">Subscription Types</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {stats.upcomingRenewals.length > 0 ? (
-                  stats.upcomingRenewals.map((member) => (
-                    <div key={member.id} className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          {member.fullName}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {format(member.renewalDate, 'MMM dd, yyyy')}
-                        </p>
-                      </div>
-                      <span className="text-xs font-medium member-expiring-soon">
-                        {member.status === 'expiring-soon' ? 'Due Soon' : 'Expired'}
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No upcoming renewals
-                  </p>
-                )}
-              </div>
-              {stats.upcomingRenewals.length > 0 && (
-                <Link to="/members?filter=expiring-soon" className="block mt-4">
-                  <Button variant="outline" size="sm" className="w-full">
-                    View All Renewals
-                  </Button>
-                </Link>
-              )}
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie
+                    data={stats.subscriptionTypeBreakdown}
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={80}
+                    dataKey="value"
+                    label={({ name, value }) => `${name}: ${value}`}
+                  >
+                    {stats.subscriptionTypeBreakdown.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={`hsl(var(--chart-${index + 1}))`} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
             </CardContent>
           </Card>
         </motion.div>
       </div>
+
+      {/* Revenue Breakdown */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+      >
+        <Card className="card-stats">
+          <CardHeader>
+            <CardTitle>Today's Revenue Breakdown</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center p-4 bg-muted/50 rounded-lg">
+                <p className="text-sm text-muted-foreground">Daily</p>
+                <p className="text-xl font-bold text-foreground">KSh {stats.todayRevenue.daily.toLocaleString()}</p>
+              </div>
+              <div className="text-center p-4 bg-muted/50 rounded-lg">
+                <p className="text-sm text-muted-foreground">Weekly</p>
+                <p className="text-xl font-bold text-foreground">KSh {stats.todayRevenue.weekly.toLocaleString()}</p>
+              </div>
+              <div className="text-center p-4 bg-muted/50 rounded-lg">
+                <p className="text-sm text-muted-foreground">Monthly</p>
+                <p className="text-xl font-bold text-foreground">KSh {stats.todayRevenue.monthly.toLocaleString()}</p>
+              </div>
+              <div className="text-center p-4 bg-destructive/10 rounded-lg">
+                <p className="text-sm text-muted-foreground">Incomplete</p>
+                <p className="text-xl font-bold text-destructive">KSh {stats.todayRevenue.incomplete.toLocaleString()}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Alerts Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+      >
+        <Card className="card-stats">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <AlertTriangle className="w-5 h-5 mr-2 text-warning" />
+              Alerts & Notifications
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {stats.overdueMembers.length > 0 && (
+                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+                  <h4 className="font-medium text-destructive mb-2">Overdue Members</h4>
+                  <div className="space-y-1">
+                    {stats.overdueMembers.map((member) => (
+                      <div key={member.id} className="flex items-center justify-between text-sm">
+                        <span>{member.fullName}</span>
+                        <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">
+                          Overdue
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {stats.incompletePayments > 0 && (
+                <div className="p-3 bg-warning/10 border border-warning/20 rounded-lg">
+                  <h4 className="font-medium text-warning mb-1">Incomplete Payments</h4>
+                  <p className="text-sm text-muted-foreground">
+                    {stats.incompletePayments} member(s) have incomplete payments
+                  </p>
+                </div>
+              )}
+              
+              {stats.overdueMembers.length === 0 && stats.incompletePayments === 0 && (
+                <div className="text-center py-4">
+                  <p className="text-muted-foreground">No alerts at the moment</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {/* PWA Install Prompt */}
       <motion.div
@@ -265,6 +355,20 @@ export default function Dashboard() {
         transition={{ delay: 0.4 }}
         className="grid gap-4 md:grid-cols-3"
       >
+        <Link to="/checkin">
+          <Card className="card-stats hover:scale-105 transition-all duration-200 cursor-pointer">
+            <CardContent className="flex items-center p-6">
+              <div className="p-3 rounded-lg bg-success/10 text-success mr-4">
+                <UserCheck className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-foreground">Member Check-in</h3>
+                <p className="text-sm text-muted-foreground">Check in gym members</p>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+
         <Link to="/members/add">
           <Card className="card-stats hover:scale-105 transition-all duration-200 cursor-pointer">
             <CardContent className="flex items-center p-6">
@@ -288,20 +392,6 @@ export default function Dashboard() {
               <div>
                 <h3 className="font-semibold text-foreground">Record Payment</h3>
                 <p className="text-sm text-muted-foreground">Add member payment</p>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link to="/reports">
-          <Card className="card-stats hover:scale-105 transition-all duration-200 cursor-pointer">
-            <CardContent className="flex items-center p-6">
-              <div className="p-3 rounded-lg bg-success/10 text-success mr-4">
-                <TrendingUp className="h-6 w-6" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-foreground">View Reports</h3>
-                <p className="text-sm text-muted-foreground">Analyze gym performance</p>
               </div>
             </CardContent>
           </Card>

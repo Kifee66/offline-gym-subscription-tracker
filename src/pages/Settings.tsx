@@ -21,9 +21,9 @@ const settingsSchema = z.object({
   contactPhone: z.string().optional(),
   contactEmail: z.string().email().optional().or(z.literal('')),
   address: z.string().optional(),
+  defaultDailyFee: z.number().min(0, 'Fee must be non-negative'),
+  defaultWeeklyFee: z.number().min(0, 'Fee must be non-negative'),
   defaultMonthlyFee: z.number().min(0, 'Fee must be non-negative'),
-  defaultQuarterlyFee: z.number().min(0, 'Fee must be non-negative'),
-  defaultAnnualFee: z.number().min(0, 'Fee must be non-negative'),
   pinCode: z.string().min(4, 'PIN must be at least 4 digits').optional(),
 });
 
@@ -47,9 +47,9 @@ export default function Settings() {
       contactPhone: '',
       contactEmail: '',
       address: '',
+      defaultDailyFee: 100,
+      defaultWeeklyFee: 500,
       defaultMonthlyFee: 2000,
-      defaultQuarterlyFee: 5500,
-      defaultAnnualFee: 20000,
       pinCode: '',
     },
   });

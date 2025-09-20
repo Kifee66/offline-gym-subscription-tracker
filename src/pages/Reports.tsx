@@ -60,13 +60,13 @@ export default function Reports() {
 
       // Calculate member stats
       const activeMembers = updatedMembers.filter(m => m.status === 'active').length;
-      const expiredMembers = updatedMembers.filter(m => m.status === 'expired').length;
-      const expiringSoonMembers = updatedMembers.filter(m => m.status === 'expiring-soon').length;
+      const dueMembers = updatedMembers.filter(m => m.status === 'due').length;
+      const overdueMembers = updatedMembers.filter(m => m.status === 'overdue').length;
 
       // Calculate upcoming renewals (next 30 days)
       const thirtyDaysFromNow = addDays(new Date(), 30);
       const upcomingRenewals = updatedMembers.filter(member =>
-        member.renewalDate <= thirtyDaysFromNow && member.status !== 'expired'
+        member.renewalDate <= thirtyDaysFromNow && member.status !== 'overdue'
       ).slice(0, 10);
 
       // Calculate monthly revenue for the past 12 months
@@ -116,15 +116,15 @@ export default function Reports() {
       }, {} as Record<string, number>);
 
       const membershipTypes = [
-        { name: 'Monthly', value: membershipTypeStats.monthly || 0, color: COLORS.primary },
-        { name: 'Quarterly', value: membershipTypeStats.quarterly || 0, color: COLORS.secondary },
-        { name: 'Annual', value: membershipTypeStats.annual || 0, color: COLORS.accent },
+        { name: 'Daily', value: membershipTypeStats.daily || 0, color: COLORS.primary },
+        { name: 'Weekly', value: membershipTypeStats.weekly || 0, color: COLORS.secondary },
+        { name: 'Monthly', value: membershipTypeStats.monthly || 0, color: COLORS.accent },
       ];
 
       setReportData({
         activeMembers,
-        expiredMembers,
-        expiringSoonMembers,
+        expiredMembers: dueMembers,
+        expiringSoonMembers: overdueMembers,
         totalRevenue,
         monthlyRevenue,
         upcomingRenewals,
@@ -191,13 +191,13 @@ export default function Reports() {
   const getStatusBadge = (status: Member['status']) => {
     const variants = {
       active: 'bg-success/10 text-success border-success/20',
-      expired: 'bg-destructive/10 text-destructive border-destructive/20',
-      'expiring-soon': 'bg-warning/10 text-warning border-warning/20',
+      due: 'bg-warning/10 text-warning border-warning/20',
+      overdue: 'bg-destructive/10 text-destructive border-destructive/20',
     };
 
     return (
       <Badge variant="outline" className={variants[status]}>
-        {status === 'expiring-soon' ? 'Expiring Soon' : status.charAt(0).toUpperCase() + status.slice(1)}
+        {status === 'due' ? 'Due' : status.charAt(0).toUpperCase() + status.slice(1)}
       </Badge>
     );
   };

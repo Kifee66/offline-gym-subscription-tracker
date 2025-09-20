@@ -33,7 +33,7 @@ const memberSchema = z.object({
   phone: z.string().min(10, 'Phone number must be at least 10 digits'),
   email: z.string().email('Invalid email address').optional().or(z.literal('')),
   gender: z.enum(['male', 'female', 'other']),
-  subscriptionType: z.enum(['monthly', 'quarterly', 'annual']),
+  subscriptionType: z.enum(['daily', 'weekly', 'monthly']),
   subscriptionFee: z.number().min(1, 'Subscription fee must be greater than 0'),
   startDate: z.date({
     required_error: 'Start date is required',
@@ -43,9 +43,9 @@ const memberSchema = z.object({
 type MemberFormData = z.infer<typeof memberSchema>;
 
 const subscriptionOptions = [
+  { value: 'daily', label: 'Daily', defaultFee: 100 },
+  { value: 'weekly', label: 'Weekly', defaultFee: 500 },
   { value: 'monthly', label: 'Monthly', defaultFee: 2000 },
-  { value: 'quarterly', label: 'Quarterly (3 months)', defaultFee: 5500 },
-  { value: 'annual', label: 'Annual (12 months)', defaultFee: 20000 },
 ];
 
 export default function AddMember() {
@@ -69,7 +69,7 @@ export default function AddMember() {
   const subscriptionType = form.watch('subscriptionType');
 
   // Update fee when subscription type changes
-  const handleSubscriptionTypeChange = (value: 'monthly' | 'quarterly' | 'annual') => {
+  const handleSubscriptionTypeChange = (value: 'daily' | 'weekly' | 'monthly') => {
     const option = subscriptionOptions.find(opt => opt.value === value);
     if (option) {
       form.setValue('subscriptionFee', option.defaultFee);
@@ -93,6 +93,7 @@ export default function AddMember() {
         startDate: data.startDate,
         renewalDate,
         status: 'active', // Will be calculated by the hook
+        paymentStatus: 'paid', // Default to paid when adding new member
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -238,7 +239,7 @@ export default function AddMember() {
                         <FormItem>
                           <FormLabel>Subscription Type *</FormLabel>
                           <Select 
-                            onValueChange={(value: 'monthly' | 'quarterly' | 'annual') => {
+                            onValueChange={(value: 'daily' | 'weekly' | 'monthly') => {
                               field.onChange(value);
                               handleSubscriptionTypeChange(value);
                             }} 

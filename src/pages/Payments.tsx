@@ -112,12 +112,14 @@ export default function Payments() {
   const onSubmit = async (data: PaymentFormData) => {
     try {
       // Add payment to database
+      const member = await db.members.get(data.memberId);
       await db.payments.add({
         memberId: data.memberId,
         amount: data.amount,
         paymentMethod: data.paymentMethod,
         paymentDate: data.paymentDate,
         renewalPeriod: data.renewalPeriod,
+        subscriptionType: member?.subscriptionType || 'monthly',
         notes: data.notes || '',
         createdAt: new Date(),
       });
